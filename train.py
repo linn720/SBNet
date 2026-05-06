@@ -59,7 +59,14 @@ def train(epoch):
         gt_rgb = im2
         output_hvi = model.HVIT(output_rgb)
         gt_hvi = model.HVIT(gt_rgb)
-        loss_hvi = L1_loss(output_hvi, gt_hvi) + D_loss(output_hvi, gt_hvi) + E_loss(output_hvi, gt_hvi) + opt.P_weight * P_loss(output_hvi, gt_hvi)[0]
+        loss_hvi = (
+            L1_loss(output_hvi, gt_hvi)
+            + D_loss(output_hvi, gt_hvi)
+            + E_loss(output_hvi, gt_hvi)
+            + opt.P_weight * P_loss(output_hvi, gt_hvi)[0]
+            + C_loss(output_hvi, gt_hvi)
+            + DC_loss(output_hvi, gt_hvi)
+        )
         loss_rgb = L1_loss(output_rgb, gt_rgb) + D_loss(output_rgb, gt_rgb) + E_loss(output_rgb, gt_rgb) + opt.P_weight * P_loss(output_rgb, gt_rgb)[0]
         loss = loss_rgb + opt.HVI_weight * loss_hvi
         iter += 1
@@ -102,36 +109,40 @@ def checkpoint(epoch):
 def load_datasets():
     print(f'===> Loading datasets: {opt.dataset}')
     if opt.dataset == 'lol_v1':
-        train_set = get_lol_training_set(opt.data_train_lol_v1,size=opt.cropSize)
+        train_set = get_lol_training_set(opt.data_train_lol_v1, size=opt.cropSize, aug_color=opt.aug_color, aug_blur=opt.aug_blur, aug_noise=opt.aug_noise, noise_std=opt.noise_std)
         test_set = get_eval_set(opt.data_val_lol_v1)
         
     elif opt.dataset == 'lol_blur':
-        train_set = get_training_set_blur(opt.data_train_lol_blur,size=opt.cropSize)
+        train_set = get_training_set_blur(opt.data_train_lol_blur, size=opt.cropSize, aug_color=opt.aug_color, aug_blur=opt.aug_blur, aug_noise=opt.aug_noise, noise_std=opt.noise_std)
         test_set = get_eval_set(opt.data_val_lol_blur)
 
     elif opt.dataset == 'lolv2_real':
-        train_set = get_lol_v2_training_set(opt.data_train_lolv2_real,size=opt.cropSize)
+        train_set = get_lol_v2_training_set(opt.data_train_lolv2_real, size=opt.cropSize, aug_color=opt.aug_color, aug_blur=opt.aug_blur, aug_noise=opt.aug_noise, noise_std=opt.noise_std)
         test_set = get_eval_set(opt.data_val_lolv2_real)
         
     elif opt.dataset == 'lolv2_syn':
-        train_set = get_lol_v2_syn_training_set(opt.data_train_lolv2_syn,size=opt.cropSize)
+        train_set = get_lol_v2_syn_training_set(opt.data_train_lolv2_syn, size=opt.cropSize, aug_color=opt.aug_color, aug_blur=opt.aug_blur, aug_noise=opt.aug_noise, noise_std=opt.noise_std)
         test_set = get_eval_set(opt.data_val_lolv2_syn)
     
     elif opt.dataset == 'SID':
-        train_set = get_SID_training_set(opt.data_train_SID,size=opt.cropSize)
+        train_set = get_SID_training_set(opt.data_train_SID, size=opt.cropSize, aug_color=opt.aug_color, aug_blur=opt.aug_blur, aug_noise=opt.aug_noise, noise_std=opt.noise_std)
         test_set = get_eval_set(opt.data_val_SID)
         
     elif opt.dataset == 'SICE_mix':
-        train_set = get_SICE_training_set(opt.data_train_SICE,size=opt.cropSize)
+        train_set = get_SICE_training_set(opt.data_train_SICE, size=opt.cropSize, aug_color=opt.aug_color, aug_blur=opt.aug_blur, aug_noise=opt.aug_noise, noise_std=opt.noise_std)
         test_set = get_SICE_eval_set(opt.data_val_SICE_mix)
         
     elif opt.dataset == 'SICE_grad':
-        train_set = get_SICE_training_set(opt.data_train_SICE,size=opt.cropSize)
+        train_set = get_SICE_training_set(opt.data_train_SICE, size=opt.cropSize, aug_color=opt.aug_color, aug_blur=opt.aug_blur, aug_noise=opt.aug_noise, noise_std=opt.noise_std)
         test_set = get_SICE_eval_set(opt.data_val_SICE_grad)
         
     elif opt.dataset == 'fivek':
-        train_set = get_fivek_training_set(opt.data_train_fivek,size=opt.cropSize)
+        train_set = get_fivek_training_set(opt.data_train_fivek, size=opt.cropSize, aug_color=opt.aug_color, aug_blur=opt.aug_blur, aug_noise=opt.aug_noise, noise_std=opt.noise_std)
         test_set = get_fivek_eval_set(opt.data_val_fivek)
+
+    elif opt.dataset == 'mydatasets':
+        train_set = get_mydata_training_set(opt.data_train_mydatasets, size=opt.cropSize, aug_color=opt.aug_color, aug_blur=opt.aug_blur, aug_noise=opt.aug_noise, noise_std=opt.noise_std)
+        test_set = get_mydata_eval_set(opt.data_val_mydatasets)
     else:
         raise Exception("should choose a dataset")
     
@@ -141,7 +152,14 @@ def load_datasets():
 
 def build_model():
     print('===> Building model ')
-    model = CIDNet().cuda()
+    model = CIDNet(
+        res_scale=opt.res_scale,
+        hv_res_scale=opt.hv_res_scale,
+        contrast_gamma=opt.contrast_gamma,
+        dark_boost=opt.dark_boost,
+        sat_gain=opt.sat_gain,
+        dark_threshold=opt.dark_threshold
+    ).cuda()
     if opt.start_epoch > 0:
         pth = f"./weights/train/epoch_{opt.start_epoch}.pth"
         model.load_state_dict(torch.load(pth, map_location=lambda storage, loc: storage))
@@ -175,7 +193,9 @@ def init_loss():
     D_loss = SSIM(weight=D_weight).cuda()
     E_loss = EdgeLoss(loss_weight=E_weight).cuda()
     P_loss = PerceptualLoss({'conv1_2': 1, 'conv2_2': 1,'conv3_4': 1,'conv4_4': 1}, perceptual_weight = P_weight ,criterion='mse').cuda()
-    return L1_loss,P_loss,E_loss,D_loss
+    C_loss = ChromaLoss(loss_weight=opt.C_weight, reduction='mean').cuda()
+    DC_loss = DarkChromaLoss(loss_weight=opt.DC_weight, dark_threshold=opt.dark_color_threshold, reduction='mean').cuda()
+    return L1_loss, P_loss, E_loss, D_loss, C_loss, DC_loss
 
 if __name__ == '__main__':  
     
@@ -186,7 +206,7 @@ if __name__ == '__main__':
     training_data_loader, testing_data_loader = load_datasets()
     model = build_model()
     optimizer,scheduler = make_scheduler()
-    L1_loss,P_loss,E_loss,D_loss = init_loss()
+    L1_loss,P_loss,E_loss,D_loss,C_loss,DC_loss = init_loss()
     
     '''
     train
@@ -211,6 +231,19 @@ if __name__ == '__main__':
         f.write(f"D_weight: {opt.D_weight}\n")  
         f.write(f"E_weight: {opt.E_weight}\n")  
         f.write(f"P_weight: {opt.P_weight}\n")  
+        f.write(f"C_weight: {opt.C_weight}\n")  
+        f.write(f"DC_weight: {opt.DC_weight}\n")  
+        f.write(f"dark_color_threshold: {opt.dark_color_threshold}\n")  
+        f.write(f"res_scale: {opt.res_scale}\n")  
+        f.write(f"hv_res_scale: {opt.hv_res_scale}\n")  
+        f.write(f"contrast_gamma: {opt.contrast_gamma}\n")  
+        f.write(f"dark_boost: {opt.dark_boost}\n")  
+        f.write(f"sat_gain: {opt.sat_gain}\n")  
+        f.write(f"dark_threshold: {opt.dark_threshold}\n")  
+        f.write(f"aug_color: {opt.aug_color}\n")  
+        f.write(f"aug_blur: {opt.aug_blur}\n")  
+        f.write(f"aug_noise: {opt.aug_noise}\n")  
+        f.write(f"noise_std: {opt.noise_std}\n")  
         f.write("| Epochs | PSNR | SSIM | LPIPS |\n")  
         f.write("|----------------------|----------------------|----------------------|----------------------|\n")  
         
@@ -232,6 +265,9 @@ if __name__ == '__main__':
             if opt.dataset == 'lolv2_syn':
                 output_folder = 'LOLv2_syn/'
                 label_dir = opt.data_valgt_lolv2_syn
+            if opt.dataset == 'mydatasets':
+                output_folder = 'Mydatasets/'
+                label_dir = opt.data_valgt_mydatasets
             
             # LOL-blur dataset with low_blur and high_sharp_scaled
             if opt.dataset == 'lol_blur':

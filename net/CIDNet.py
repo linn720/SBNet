@@ -9,7 +9,13 @@ class CIDNet(nn.Module, PyTorchModelHubMixin):
     def __init__(self, 
                  channels=[36, 36, 72, 144],
                  heads=[1, 2, 4, 8],
-                 norm=False
+                 norm=False,
+                 res_scale=1.0,
+                 hv_res_scale=1.0,
+                 contrast_gamma=1.2,
+                 dark_boost=0.15,
+                 sat_gain=1.1,
+                 dark_threshold=0.4
         ):
         super(CIDNet, self).__init__()
         
@@ -66,8 +72,15 @@ class CIDNet(nn.Module, PyTorchModelHubMixin):
         self.I_LCA5 = I_LCA(ch3, head3)
         self.I_LCA6 = I_LCA(ch2, head2)
         
-        self.trans = RGB_HVI()
-        
+        self.trans = RGB_HVI(
+            contrast_gamma=contrast_gamma,
+            dark_boost=dark_boost,
+            sat_gain=sat_gain,
+            dark_threshold=dark_threshold
+        )
+        self.res_scale = float(res_scale)
+        self.hv_res_scale = float(hv_res_scale)
+
     def forward(self, x):
         dtypes = x.dtype
         hvi = self.trans.HVIT(x)
@@ -115,8 +128,9 @@ class CIDNet(nn.Module, PyTorchModelHubMixin):
         i_dec0 = self.ID_block0(i_dec1)
         hv_1 = self.HVD_block1(hv_1, hv_jump0)
         hv_0 = self.HVD_block0(hv_1)
-        
-        output_hvi = torch.cat([hv_0, i_dec0], dim=1) + hvi
+
+        delta_hvi = torch.cat([hv_0 * self.hv_res_scale, i_dec0], dim=1)
+        output_hvi = hvi + self.res_scale * delta_hvi
         output_rgb = self.trans.PHVIT(output_hvi)
 
         return output_rgb
@@ -126,4 +140,3 @@ class CIDNet(nn.Module, PyTorchModelHubMixin):
         return hvi
     
     
-

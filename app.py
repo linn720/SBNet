@@ -62,8 +62,8 @@ def process_image(input_img,score,model_path,gamma,alpha_s=1.0,alpha_i=1.0):
 def find_pth_files(directory):
     pth_files = []
     for root, dirs, files in os.walk(directory):
-        if 'train' in root.split(os.sep):
-            continue
+     #   if 'train' in root.split(os.sep):
+      #      continue
         for file in files:
             if file.endswith('.pth'):
                 pth_files.append(os.path.join(root, file))

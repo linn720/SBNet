@@ -65,6 +65,42 @@ class EdgeLoss(nn.Module):
         return loss*self.weight
 
 
+class ChromaLoss(nn.Module):
+    def __init__(self, loss_weight=1.0, reduction='mean'):
+        super(ChromaLoss, self).__init__()
+        if reduction not in ['none', 'mean', 'sum']:
+            raise ValueError(f'Unsupported reduction mode: {reduction}. '
+                             f'Supported ones are: {_reduction_modes}')
+        self.loss_weight = loss_weight
+        self.reduction = reduction
+
+    def forward(self, pred_hvi, target_hvi, **kwargs):
+        pred_hv = pred_hvi[:, 0:2, :, :]
+        target_hv = target_hvi[:, 0:2, :, :]
+        return self.loss_weight * l1_loss(pred_hv, target_hv, reduction=self.reduction)
+
+
+class DarkChromaLoss(nn.Module):
+    def __init__(self, loss_weight=1.0, dark_threshold=0.4, reduction='mean', min_mask=1e-6):
+        super(DarkChromaLoss, self).__init__()
+        if reduction not in ['none', 'mean', 'sum']:
+            raise ValueError(f'Unsupported reduction mode: {reduction}. '
+                             f'Supported ones are: {_reduction_modes}')
+        self.loss_weight = loss_weight
+        self.dark_threshold = float(dark_threshold)
+        self.reduction = reduction
+        self.min_mask = float(min_mask)
+
+    def forward(self, pred_hvi, target_hvi, **kwargs):
+        pred_hv = pred_hvi[:, 0:2, :, :]
+        target_hv = target_hvi[:, 0:2, :, :]
+        target_i = target_hvi[:, 2:3, :, :]
+        mask = (target_i < self.dark_threshold).float()
+        if mask.sum().item() <= self.min_mask:
+            return pred_hv.new_tensor(0.0)
+        return self.loss_weight * l1_loss(pred_hv, target_hv, weight=mask, reduction=self.reduction)
+
+
 class PerceptualLoss(nn.Module):
     """Perceptual loss with commonly used style loss.
 
@@ -188,6 +224,3 @@ class SSIM(torch.nn.Module):
             self.channel = channel
 
         return (1. - map_ssim(img1, img2, window, self.window_size, channel, self.size_average)) * self.weight
-
-
-

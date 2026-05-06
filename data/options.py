@@ -37,6 +37,7 @@ def option():
     parser.add_argument('--data_train_SID'          , type=str, default='./datasets/Sony_total_dark/train')
     parser.add_argument('--data_train_SICE'         , type=str, default='./datasets/SICE/Dataset/train')
     parser.add_argument('--data_train_fivek'        , type=str, default='./datasets/FiveK/train')
+    parser.add_argument('--data_train_mydatasets'   , type=str, default='./datasets/mydatasets/train')
 
     # validation input
     parser.add_argument('--data_val_lol_blur'       , type=str, default='./datasets/LOL_blur/eval/low_blur')
@@ -47,6 +48,7 @@ def option():
     parser.add_argument('--data_val_SICE_mix'       , type=str, default='./datasets/SICE/Dataset/eval/test')
     parser.add_argument('--data_val_SICE_grad'      , type=str, default='./datasets/SICE/Dataset/eval/test')
     parser.add_argument('--data_test_fivek'         , type=str, default='./datasets/FiveK/test/input')
+    parser.add_argument('--data_val_mydatasets'     , type=str, default='./datasets/mydatasets/eval/low')
 
     # validation groundtruth
     parser.add_argument('--data_valgt_lol_blur'     , type=str, default='./datasets/LOL_blur/eval/high_sharp_scaled/')
@@ -57,6 +59,7 @@ def option():
     parser.add_argument('--data_valgt_SICE_mix'     , type=str, default='./datasets/SICE/Dataset/eval/target/')
     parser.add_argument('--data_valgt_SICE_grad'    , type=str, default='./datasets/SICE/Dataset/eval/target/')
     parser.add_argument('--data_valgt_fivek'        , type=str, default='./datasets/FiveK/test/target/')
+    parser.add_argument('--data_valgt_mydatasets'   , type=str, default='./datasets/mydatasets/eval/high/')
 
     parser.add_argument('--val_folder', default='./results/', help='Location to save validation datasets')
 
@@ -66,11 +69,28 @@ def option():
     parser.add_argument('--D_weight',  type=float, default=0.5)
     parser.add_argument('--E_weight',  type=float, default=50.0)
     parser.add_argument('--P_weight',  type=float, default=1e-2)
-    
+    parser.add_argument('--C_weight',  type=float, default=0.2, help='chroma loss weight (H/V channels)')
+    parser.add_argument('--DC_weight', type=float, default=0.2, help='dark chroma loss weight')
+    parser.add_argument('--dark_color_threshold', type=float, default=0.35, help='dark region threshold for chroma loss')
+
+    # HVI enhancement parameters
+    parser.add_argument('--res_scale', type=float, default=1.0, help='HVI residual scale')
+    parser.add_argument('--hv_res_scale', type=float, default=1.0, help='H/V residual scale')
+    parser.add_argument('--contrast_gamma', type=float, default=1.2, help='gamma for I-channel contrast')
+    parser.add_argument('--dark_boost', type=float, default=0.15, help='dark region boost strength')
+    parser.add_argument('--sat_gain', type=float, default=1.1, help='saturation gain in PHVIT')
+    parser.add_argument('--dark_threshold', type=float, default=0.4, help='dark region threshold')
+
     # use random gamma function (enhancement curve) to improve generalization
     parser.add_argument('--gamma', type=_str2bool, default=False)
     parser.add_argument('--start_gamma', type=int, default=60)
     parser.add_argument('--end_gamma', type=int, default=120)
+
+    # training augmentations
+    parser.add_argument('--aug_color', type=_str2bool, default=True, help='enable color jitter for training')
+    parser.add_argument('--aug_blur', type=_str2bool, default=False, help='enable random blur for training')
+    parser.add_argument('--aug_noise', type=_str2bool, default=False, help='enable gaussian noise for training')
+    parser.add_argument('--noise_std', type=float, default=0.01, help='gaussian noise std for training')
 
     # auto grad, turn off to speed up training
     parser.add_argument('--grad_detect', type=_str2bool, default=False, help='if gradient explosion occurs, turn-on it')
@@ -86,7 +106,8 @@ def option():
              'SID',
              'SICE_mix',
              'SICE_grad',
-             'fivek'],
+             'fivek',
+             'mydatasets'],
     help='Select the dataset to train on (default: %(default)s)')
 
     return parser

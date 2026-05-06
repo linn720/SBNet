@@ -4,7 +4,11 @@ import torch.nn as nn
 pi = 3.141592653589793
 
 class RGB_HVI(nn.Module):
-    def __init__(self):
+    def __init__(self,
+                 contrast_gamma=1.2,
+                 dark_boost=0.15,
+                 sat_gain=1.1,
+                 dark_threshold=0.4):
         super(RGB_HVI, self).__init__()
         self.density_k = torch.nn.Parameter(torch.full([1],0.2)) # k is reciprocal to the paper mentioned
         self.gated = False
@@ -12,7 +16,11 @@ class RGB_HVI(nn.Module):
         self.alpha = 1.0
         self.alpha_s = 1.3
         self.this_k = 0
-        
+        self.contrast_gamma = float(contrast_gamma)
+        self.dark_boost = float(dark_boost)
+        self.sat_gain = float(sat_gain)
+        self.dark_threshold = float(dark_threshold)
+
     def HVIT(self, img):
         eps = 1e-8
         device = img.device
@@ -26,6 +34,13 @@ class RGB_HVI(nn.Module):
 
         hue[img.min(1)[0]==value] = 0.0
         hue = hue/6.0
+
+        value = torch.clamp(value, 0, 1)
+        if self.contrast_gamma != 1.0:
+            value = value.pow(1.0 / self.contrast_gamma)
+        if self.dark_boost > 0:
+            dark_mask = torch.clamp((self.dark_threshold - value) / (self.dark_threshold + eps), 0, 1)
+            value = torch.clamp(value + self.dark_boost * dark_mask, 0, 1)
 
         saturation = (value - img_min ) / (value + eps )
         saturation[value==0] = 0
@@ -65,10 +80,13 @@ class RGB_HVI(nn.Module):
         h = torch.atan2(V + eps,H + eps) / (2*pi)
         h = h%1
         s = torch.sqrt(H**2 + V**2 + eps)
-        
+
         if self.gated:
             s = s * self.alpha_s
-        
+
+        if self.sat_gain != 1.0:
+            s = s * self.sat_gain
+
         s = torch.clamp(s,0,1)
         v = torch.clamp(v,0,1)
         

@@ -41,7 +41,11 @@ class LOLDatasetFromFolder(data.Dataset):
         return im1, im2, file1, file2
 
     def __len__(self):
-        return 485
+        folder = self.data_dir + '/low'
+        folder2 = self.data_dir + '/high'
+        low_count = len([x for x in listdir(folder) if is_image_file(x)])
+        high_count = len([x for x in listdir(folder2) if is_image_file(x)])
+        return min(low_count, high_count)
 
     
 class LOLv2DatasetFromFolder(data.Dataset):

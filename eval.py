@@ -77,6 +77,12 @@ if __name__ == '__main__':
     eval_parser.add_argument('--gamma', type=float, default=1.0)
     eval_parser.add_argument('--unpaired_weights', type=str, default='./weights/LOLv2_syn/w_perc.pth')
 
+    eval_parser.add_argument('--res_scale', type=float, default=1.0)
+    eval_parser.add_argument('--contrast_gamma', type=float, default=1.2)
+    eval_parser.add_argument('--dark_boost', type=float, default=0.15)
+    eval_parser.add_argument('--sat_gain', type=float, default=1.1)
+    eval_parser.add_argument('--dark_threshold', type=float, default=0.4)
+
     ep = eval_parser.parse_args()
 
 
@@ -161,6 +167,11 @@ if __name__ == '__main__':
         norm_size = False
         weight_path = ep.unpaired_weights
         
-    eval_net = CIDNet().cuda()
+    eval_net = CIDNet(
+        res_scale=ep.res_scale,
+        contrast_gamma=ep.contrast_gamma,
+        dark_boost=ep.dark_boost,
+        sat_gain=ep.sat_gain,
+        dark_threshold=ep.dark_threshold
+    ).cuda()
     eval(eval_net, eval_data, weight_path, output_folder,norm_size=norm_size,LOL=ep.lol,v2=ep.lol_v2_real,unpaired=ep.unpaired,alpha=alpha,gamma=ep.gamma)
-
