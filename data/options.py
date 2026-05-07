@@ -72,6 +72,10 @@ def option():
     parser.add_argument('--C_weight',  type=float, default=0.2, help='chroma loss weight (H/V channels)')
     parser.add_argument('--DC_weight', type=float, default=0.2, help='dark chroma loss weight')
     parser.add_argument('--dark_color_threshold', type=float, default=0.35, help='dark region threshold for chroma loss')
+    parser.add_argument('--CM_weight', type=float, default=0.0, help='color map loss weight')
+    parser.add_argument('--repeat_factor', type=int, default=1, help='repeat training dataset for small custom datasets')
+    parser.add_argument('--DHS_weight', type=float, default=0.0, help='dark HV smooth loss weight')
+    parser.add_argument('--FRS_weight', type=float, default=0.0, help='flat RGB smooth loss weight')
 
     # HVI enhancement parameters
     parser.add_argument('--res_scale', type=float, default=1.0, help='HVI residual scale')
@@ -87,7 +91,7 @@ def option():
     parser.add_argument('--end_gamma', type=int, default=120)
 
     # training augmentations
-    parser.add_argument('--aug_color', type=_str2bool, default=True, help='enable color jitter for training')
+    parser.add_argument('--aug_color', type=_str2bool, default=False, help='enable color jitter for training')
     parser.add_argument('--aug_blur', type=_str2bool, default=False, help='enable random blur for training')
     parser.add_argument('--aug_noise', type=_str2bool, default=False, help='enable gaussian noise for training')
     parser.add_argument('--noise_std', type=float, default=0.01, help='gaussian noise std for training')
@@ -95,7 +99,7 @@ def option():
     # auto grad, turn off to speed up training
     parser.add_argument('--grad_detect', type=_str2bool, default=False, help='if gradient explosion occurs, turn-on it')
     parser.add_argument('--grad_clip', type=_str2bool, default=True, help='if gradient fluctuates too much, turn-on it')
-    
+    parser.add_argument('--grad_clip_norm', type=float, default=1.0, help='gradient clipping max norm')
     
     # choose which dataset you want to train
     parser.add_argument('--dataset', type=str, default='lol_v1',

@@ -59,15 +59,32 @@ def train(epoch):
         gt_rgb = im2
         output_hvi = model.HVIT(output_rgb)
         gt_hvi = model.HVIT(gt_rgb)
+        if opt.P_weight > 0:
+            p_loss_hvi = opt.P_weight * P_loss(output_hvi, gt_hvi)[0]
+            p_loss_rgb = opt.P_weight * P_loss(output_rgb, gt_rgb)[0]
+        else:
+            p_loss_hvi = output_hvi.new_tensor(0.0)
+            p_loss_rgb = output_rgb.new_tensor(0.0)
+
         loss_hvi = (
-            L1_loss(output_hvi, gt_hvi)
-            + D_loss(output_hvi, gt_hvi)
-            + E_loss(output_hvi, gt_hvi)
-            + opt.P_weight * P_loss(output_hvi, gt_hvi)[0]
-            + C_loss(output_hvi, gt_hvi)
-            + DC_loss(output_hvi, gt_hvi)
+                L1_loss(output_hvi, gt_hvi)
+                + D_loss(output_hvi, gt_hvi)
+                + E_loss(output_hvi, gt_hvi)
+                + p_loss_hvi
+                + C_loss(output_hvi, gt_hvi)
+                + DC_loss(output_hvi, gt_hvi)
+                + DHS_loss(output_hvi, gt_hvi)
         )
-        loss_rgb = L1_loss(output_rgb, gt_rgb) + D_loss(output_rgb, gt_rgb) + E_loss(output_rgb, gt_rgb) + opt.P_weight * P_loss(output_rgb, gt_rgb)[0]
+
+        loss_rgb = (
+            L1_loss(output_rgb, gt_rgb)
+            + D_loss(output_rgb, gt_rgb)
+            + E_loss(output_rgb, gt_rgb)
+            + p_loss_rgb
+            + CM_loss(output_rgb, gt_rgb)
+            + FRS_loss(output_rgb, gt_rgb)
+        )
+
         loss = loss_rgb + opt.HVI_weight * loss_hvi
         iter += 1
 
@@ -75,7 +92,7 @@ def train(epoch):
         loss.backward()
 
         if opt.grad_clip:
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 0.01, norm_type=2)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), opt.grad_clip_norm, norm_type=2)
         
 
         optimizer.step()
@@ -143,7 +160,18 @@ def load_datasets():
         test_set = get_fivek_eval_set(opt.data_val_fivek)
 
     elif opt.dataset == 'mydatasets':
-        train_set = get_mydata_training_set(opt.data_train_mydatasets, size=opt.cropSize, aug_color=opt.aug_color, aug_blur=opt.aug_blur, aug_noise=opt.aug_noise, noise_std=opt.noise_std)
+        train_set = get_mydata_training_set(
+            opt.data_train_mydatasets,
+            size=opt.cropSize,
+            aug_color=opt.aug_color,
+            aug_blur=opt.aug_blur,
+            aug_noise=opt.aug_noise,
+            noise_std=opt.noise_std
+        )
+
+        if opt.repeat_factor > 1:
+            train_set = torch.utils.data.ConcatDataset([train_set] * opt.repeat_factor)
+
         test_set = get_mydata_eval_set(opt.data_val_mydatasets)
     else:
         raise Exception("should choose a dataset")
@@ -197,7 +225,17 @@ def init_loss():
     P_loss = PerceptualLoss({'conv1_2': 1, 'conv2_2': 1,'conv3_4': 1,'conv4_4': 1}, perceptual_weight = P_weight ,criterion='mse').cuda()
     C_loss = ChromaLoss(loss_weight=opt.C_weight, reduction='mean').cuda()
     DC_loss = DarkChromaLoss(loss_weight=opt.DC_weight, dark_threshold=opt.dark_color_threshold, reduction='mean').cuda()
-    return L1_loss, P_loss, E_loss, D_loss, C_loss, DC_loss
+    CM_loss = ColorMapLoss(loss_weight=opt.CM_weight).cuda()
+    DHS_loss = DarkHVSmoothLoss(
+        loss_weight=opt.DHS_weight,
+        dark_threshold=opt.dark_color_threshold
+    ).cuda()
+    FRS_loss = FlatRGBSmoothLoss(
+        loss_weight=opt.FRS_weight,
+        edge_threshold=0.03
+    ).cuda()
+
+    return L1_loss, P_loss, E_loss, D_loss, C_loss, DC_loss, CM_loss, DHS_loss, FRS_loss
 
 if __name__ == '__main__':  
     
@@ -208,8 +246,8 @@ if __name__ == '__main__':
     training_data_loader, testing_data_loader = load_datasets()
     model = build_model()
     optimizer,scheduler = make_scheduler()
-    L1_loss,P_loss,E_loss,D_loss,C_loss,DC_loss = init_loss()
-    
+    L1_loss,P_loss,E_loss,D_loss,C_loss,DC_loss,CM_loss,DHS_loss,FRS_loss = init_loss()
+
     '''
     train
     '''
@@ -234,7 +272,12 @@ if __name__ == '__main__':
         f.write(f"E_weight: {opt.E_weight}\n")  
         f.write(f"P_weight: {opt.P_weight}\n")  
         f.write(f"C_weight: {opt.C_weight}\n")  
-        f.write(f"DC_weight: {opt.DC_weight}\n")  
+        f.write(f"DC_weight: {opt.DC_weight}\n")
+        f.write(f"CM_weight: {opt.CM_weight}\n")
+        f.write(f"DHS_weight: {opt.DHS_weight}\n")
+        f.write(f"FRS_weight: {opt.FRS_weight}\n")
+        f.write(f"repeat_factor: {opt.repeat_factor}\n")
+        f.write(f"grad_clip_norm: {opt.grad_clip_norm}\n")
         f.write(f"dark_color_threshold: {opt.dark_color_threshold}\n")  
         f.write(f"res_scale: {opt.res_scale}\n")  
         f.write(f"hv_res_scale: {opt.hv_res_scale}\n")  
@@ -270,7 +313,8 @@ if __name__ == '__main__':
             if opt.dataset == 'mydatasets':
                 output_folder = 'Mydatasets/'
                 label_dir = opt.data_valgt_mydatasets
-            
+                norm_size = True
+
             # LOL-blur dataset with low_blur and high_sharp_scaled
             if opt.dataset == 'lol_blur':
                 output_folder = 'LOL_blur/'

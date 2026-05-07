@@ -100,6 +100,102 @@ class DarkChromaLoss(nn.Module):
             return pred_hv.new_tensor(0.0)
         return self.loss_weight * l1_loss(pred_hv, target_hv, weight=mask, reduction=self.reduction)
 
+class ColorMapLoss(nn.Module):
+    """
+    局部颜色均值损失。
+    作用：让输出图在局部区域的 RGB 色彩分布接近 GT。
+    比单纯 MeanColorLoss 更适合修复“植物不绿、墙面偏色、大块色斑”。
+    """
+    def __init__(self, loss_weight=1.0, kernel_size=32, stride=16):
+        super(ColorMapLoss, self).__init__()
+        self.loss_weight = float(loss_weight)
+        self.kernel_size = int(kernel_size)
+        self.stride = int(stride)
+
+    def forward(self, pred, target):
+        # 全局颜色均值
+        global_loss = F.l1_loss(
+            pred.mean(dim=(2, 3)),
+            target.mean(dim=(2, 3))
+        )
+
+        h, w = pred.shape[-2], pred.shape[-1]
+
+        # 局部颜色均值，输入 patch 足够大时启用
+        if h >= self.kernel_size and w >= self.kernel_size:
+            pred_map = F.avg_pool2d(
+                pred,
+                kernel_size=self.kernel_size,
+                stride=self.stride
+            )
+            target_map = F.avg_pool2d(
+                target,
+                kernel_size=self.kernel_size,
+                stride=self.stride
+            )
+            local_loss = F.l1_loss(pred_map, target_map)
+        else:
+            local_loss = pred.new_tensor(0.0)
+
+        return self.loss_weight * (global_loss + local_loss)
+
+class DarkHVSmoothLoss(nn.Module):
+    """
+    暗区 H/V 平滑损失。
+    作用：抑制暗部和平坦区域的彩色噪声、绿色/红色块状污染。
+    """
+    def __init__(self, loss_weight=0.05, dark_threshold=0.45):
+        super(DarkHVSmoothLoss, self).__init__()
+        self.loss_weight = float(loss_weight)
+        self.dark_threshold = float(dark_threshold)
+
+    def forward(self, pred_hvi, target_hvi):
+        pred_hv = pred_hvi[:, 0:2, :, :]
+        target_i = target_hvi[:, 2:3, :, :]
+
+        mask = (target_i < self.dark_threshold).float()
+
+        dx = torch.abs(pred_hv[:, :, :, 1:] - pred_hv[:, :, :, :-1])
+        dy = torch.abs(pred_hv[:, :, 1:, :] - pred_hv[:, :, :-1, :])
+
+        mask_x = mask[:, :, :, 1:]
+        mask_y = mask[:, :, 1:, :]
+
+        loss_x = (dx * mask_x).mean()
+        loss_y = (dy * mask_y).mean()
+
+        return self.loss_weight * (loss_x + loss_y)
+
+class FlatRGBSmoothLoss(nn.Module):
+    """
+    平坦区域 RGB 平滑损失。
+    用 GT 的梯度判断哪些地方是平坦区，只在平坦区抑制输出图的高频噪声。
+    用于减少墙面、地面、椅子上的颗粒噪声。
+    """
+    def __init__(self, loss_weight=0.05, edge_threshold=0.03):
+        super(FlatRGBSmoothLoss, self).__init__()
+        self.loss_weight = float(loss_weight)
+        self.edge_threshold = float(edge_threshold)
+
+    def rgb_to_gray(self, x):
+        return 0.299 * x[:, 0:1, :, :] + 0.587 * x[:, 1:2, :, :] + 0.114 * x[:, 2:3, :, :]
+
+    def forward(self, pred, target):
+        target_gray = self.rgb_to_gray(target)
+
+        target_dx = torch.abs(target_gray[:, :, :, 1:] - target_gray[:, :, :, :-1])
+        target_dy = torch.abs(target_gray[:, :, 1:, :] - target_gray[:, :, :-1, :])
+
+        flat_mask_x = (target_dx < self.edge_threshold).float()
+        flat_mask_y = (target_dy < self.edge_threshold).float()
+
+        pred_dx = torch.abs(pred[:, :, :, 1:] - pred[:, :, :, :-1])
+        pred_dy = torch.abs(pred[:, :, 1:, :] - pred[:, :, :-1, :])
+
+        loss_x = (pred_dx * flat_mask_x).mean()
+        loss_y = (pred_dy * flat_mask_y).mean()
+
+        return self.loss_weight * (loss_x + loss_y)
 
 class PerceptualLoss(nn.Module):
     """Perceptual loss with commonly used style loss.

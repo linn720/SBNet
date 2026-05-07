@@ -129,35 +129,9 @@ class CIDNet(nn.Module, PyTorchModelHubMixin):
         hv_1 = self.HVD_block1(hv_1, hv_jump0)
         hv_0 = self.HVD_block0(hv_1)
 
-        dark_mask = torch.clamp(
-            (self.trans.dark_threshold - hvi[:, 2:3, :, :]) / (self.trans.dark_threshold + 1e-8),
-            0,
-            1
-        )
-
-        hv_gate = 1.0 - 0.5 * dark_mask
-        hv_delta = hv_0 * self.hv_res_scale * hv_gate
-
-        delta_hvi = torch.cat([hv_delta, i_dec0], dim=1)
-        output_hvi = hvi + self.res_scale * delta_hvi
-
-        input_i = hvi[:, 2:3, :, :]
-
-        # 越暗，越少改 H/V 色度，避免暗部彩噪和色斑
-        bright_gate = torch.clamp((input_i - 0.12) / 0.50, 0.0, 1.0)
-
-        # 边缘区域允许更多色度变化，平坦墙面/阴影区抑制色度变化
-        dx = torch.abs(input_i[:, :, :, 1:] - input_i[:, :, :, :-1])
-        dy = torch.abs(input_i[:, :, 1:, :] - input_i[:, :, :-1, :])
-
-        edge = torch.zeros_like(input_i)
-        edge[:, :, :, 1:] += dx
-        edge[:, :, 1:, :] += dy
-        edge_gate = torch.clamp(edge * 20.0, 0.0, 1.0)
-
-        hv_gate = 0.08 + 0.92 * torch.maximum(bright_gate, edge_gate)
-
-        hv_delta = hv_0 * self.hv_res_scale * hv_gate
+        # Direct HVI residual output.
+        # 单图过拟合阶段不要加暗区 HV gate，否则植物、暗部物体的颜色会被压成灰黑。
+        hv_delta = hv_0 * self.hv_res_scale
         i_delta = i_dec0
 
         delta_hvi = torch.cat([hv_delta, i_delta], dim=1)
