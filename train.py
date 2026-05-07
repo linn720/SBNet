@@ -70,12 +70,14 @@ def train(epoch):
         loss_rgb = L1_loss(output_rgb, gt_rgb) + D_loss(output_rgb, gt_rgb) + E_loss(output_rgb, gt_rgb) + opt.P_weight * P_loss(output_rgb, gt_rgb)[0]
         loss = loss_rgb + opt.HVI_weight * loss_hvi
         iter += 1
-        
+
+        optimizer.zero_grad()
+        loss.backward()
+
         if opt.grad_clip:
             torch.nn.utils.clip_grad_norm_(model.parameters(), 0.01, norm_type=2)
         
-        optimizer.zero_grad()
-        loss.backward()
+
         optimizer.step()
         
         loss_print = loss_print + loss.item()

@@ -81,6 +81,18 @@ class CIDNet(nn.Module, PyTorchModelHubMixin):
         self.res_scale = float(res_scale)
         self.hv_res_scale = float(hv_res_scale)
 
+    dark_mask = torch.clamp(
+        (self.trans.dark_threshold - hvi[:, 2:3, :, :]) / (self.trans.dark_threshold + 1e-8),
+        0,
+        1
+    )
+
+    hv_gate = 1.0 - 0.5 * dark_mask
+    hv_delta = hv_0 * self.hv_res_scale * hv_gate
+
+    delta_hvi = torch.cat([hv_delta, i_dec0], dim=1)
+    output_hvi = hvi + self.res_scale * delta_hvi
+
     def forward(self, x):
         dtypes = x.dtype
         hvi = self.trans.HVIT(x)

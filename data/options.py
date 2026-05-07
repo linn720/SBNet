@@ -75,10 +75,10 @@ def option():
 
     # HVI enhancement parameters
     parser.add_argument('--res_scale', type=float, default=1.0, help='HVI residual scale')
-    parser.add_argument('--hv_res_scale', type=float, default=1.0, help='H/V residual scale')
-    parser.add_argument('--contrast_gamma', type=float, default=1.2, help='gamma for I-channel contrast')
-    parser.add_argument('--dark_boost', type=float, default=0.15, help='dark region boost strength')
-    parser.add_argument('--sat_gain', type=float, default=1.1, help='saturation gain in PHVIT')
+    parser.add_argument('--hv_res_scale', type=float, default=0.6, help='H/V residual scale')
+    parser.add_argument('--contrast_gamma', type=float, default=1.0, help='gamma for I-channel contrast')
+    parser.add_argument('--dark_boost', type=float, default=0.0, help='dark region boost strength')
+    parser.add_argument('--sat_gain', type=float, default=1.0, help='saturation gain in PHVIT')
     parser.add_argument('--dark_threshold', type=float, default=0.4, help='dark region threshold')
 
     # use random gamma function (enhancement curve) to improve generalization

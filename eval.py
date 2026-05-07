@@ -168,6 +168,7 @@ if __name__ == '__main__':
         norm_size = False
         weight_path = ep.unpaired_weights
 
+
     eval_net = CIDNet(
         res_scale=ep.res_scale,
         hv_res_scale=ep.hv_res_scale,
