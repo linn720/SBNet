@@ -25,40 +25,53 @@ class RGB_HVI(nn.Module):
         eps = 1e-8
         device = img.device
         dtypes = img.dtype
+
         hue = torch.Tensor(img.shape[0], img.shape[2], img.shape[3]).to(device).to(dtypes)
-        value = img.max(1)[0].to(dtypes)
+
+        # 原始 value / min
+        raw_value = img.max(1)[0].to(dtypes)
         img_min = img.min(1)[0].to(dtypes)
-        hue[img[:,2]==value] = 4.0 + ( (img[:,0]-img[:,1]) / (value - img_min + eps)) [img[:,2]==value]
-        hue[img[:,1]==value] = 2.0 + ( (img[:,2]-img[:,0]) / (value - img_min + eps)) [img[:,1]==value]
-        hue[img[:,0]==value] = (0.0 + ((img[:,1]-img[:,2]) / (value - img_min + eps)) [img[:,0]==value]) % 6
 
-        hue[img.min(1)[0]==value] = 0.0
-        hue = hue/6.0
+        hue[img[:, 2] == raw_value] = 4.0 + (
+        ((img[:, 0] - img[:, 1]) / (raw_value - img_min + eps))[img[:, 2] == raw_value])
+        hue[img[:, 1] == raw_value] = 2.0 + (
+        ((img[:, 2] - img[:, 0]) / (raw_value - img_min + eps))[img[:, 1] == raw_value])
+        hue[img[:, 0] == raw_value] = (0.0 + (
+        ((img[:, 1] - img[:, 2]) / (raw_value - img_min + eps))[img[:, 0] == raw_value])) % 6
 
-        value = torch.clamp(value, 0, 1)
+        hue[img.min(1)[0] == raw_value] = 0.0
+        hue = hue / 6.0
+
+        # saturation 一定用原始 value 算
+        saturation = (raw_value - img_min) / (raw_value + eps)
+        saturation[raw_value == 0] = 0
+
+        # 亮度增强只作用于 I
+        value = torch.clamp(raw_value, 0, 1)
+
         if self.contrast_gamma != 1.0:
             value = value.pow(1.0 / self.contrast_gamma)
+
         if self.dark_boost > 0:
             dark_mask = torch.clamp((self.dark_threshold - value) / (self.dark_threshold + eps), 0, 1)
             value = torch.clamp(value + self.dark_boost * dark_mask, 0, 1)
 
-        saturation = (value - img_min ) / (value + eps )
-        saturation[value==0] = 0
-
         hue = hue.unsqueeze(1)
         saturation = saturation.unsqueeze(1)
         value = value.unsqueeze(1)
-        
+
         k = self.density_k
         self.this_k = k.item()
-        
+
         color_sensitive = ((value * 0.5 * pi).sin() + eps).pow(k)
         ch = (2.0 * pi * hue).cos()
         cv = (2.0 * pi * hue).sin()
+
         H = color_sensitive * saturation * ch
         V = color_sensitive * saturation * cv
         I = value
-        xyz = torch.cat([H, V, I],dim=1)
+
+        xyz = torch.cat([H, V, I], dim=1)
         return xyz
     
     def PHVIT(self, img):

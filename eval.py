@@ -77,6 +77,7 @@ if __name__ == '__main__':
     eval_parser.add_argument('--gamma', type=float, default=1.0)
     eval_parser.add_argument('--unpaired_weights', type=str, default='./weights/LOLv2_syn/w_perc.pth')
 
+    eval_parser.add_argument('--hv_res_scale', type=float, default=1.0)
     eval_parser.add_argument('--res_scale', type=float, default=1.0)
     eval_parser.add_argument('--contrast_gamma', type=float, default=1.2)
     eval_parser.add_argument('--dark_boost', type=float, default=0.15)
@@ -166,9 +167,10 @@ if __name__ == '__main__':
         alpha = ep.alpha
         norm_size = False
         weight_path = ep.unpaired_weights
-        
+
     eval_net = CIDNet(
         res_scale=ep.res_scale,
+        hv_res_scale=ep.hv_res_scale,
         contrast_gamma=ep.contrast_gamma,
         dark_boost=ep.dark_boost,
         sat_gain=ep.sat_gain,
