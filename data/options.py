@@ -38,6 +38,9 @@ def option():
     parser.add_argument('--data_train_SICE'         , type=str, default='./datasets/SICE/Dataset/train')
     parser.add_argument('--data_train_fivek'        , type=str, default='./datasets/FiveK/train')
     parser.add_argument('--data_train_mydatasets'   , type=str, default='./datasets/mydatasets/train')
+    parser.add_argument('--data_train_ts_plant', type=str, default='./datasets/ts/plant')
+    parser.add_argument('--data_train_ts_book', type=str, default='./datasets/ts/book')
+    parser.add_argument('--data_train_ts_other', type=str, default='./datasets/ts/other')
 
     # validation input
     parser.add_argument('--data_val_lol_blur'       , type=str, default='./datasets/LOL_blur/eval/low_blur')
@@ -49,6 +52,9 @@ def option():
     parser.add_argument('--data_val_SICE_grad'      , type=str, default='./datasets/SICE/Dataset/eval/test')
     parser.add_argument('--data_test_fivek'         , type=str, default='./datasets/FiveK/test/input')
     parser.add_argument('--data_val_mydatasets'     , type=str, default='./datasets/mydatasets/eval/low')
+    parser.add_argument('--data_val_ts_plant', type=str, default='./datasets/ts/plant/low')
+    parser.add_argument('--data_val_ts_book', type=str, default='./datasets/ts/book/low')
+    parser.add_argument('--data_val_ts_other', type=str, default='./datasets/ts/other/low')
 
     # validation groundtruth
     parser.add_argument('--data_valgt_lol_blur'     , type=str, default='./datasets/LOL_blur/eval/high_sharp_scaled/')
@@ -76,6 +82,9 @@ def option():
     parser.add_argument('--repeat_factor', type=int, default=1, help='repeat training dataset for small custom datasets')
     parser.add_argument('--DHS_weight', type=float, default=0.0, help='dark HV smooth loss weight')
     parser.add_argument('--FRS_weight', type=float, default=0.0, help='flat RGB smooth loss weight')
+    parser.add_argument('--teacher_weight', type=float, default=0.2)
+    parser.add_argument('--teacher_path', type=str, default='./weights/LOLv2_real/w_perc.pth')
+    parser.add_argument('--color_mean_weight', type=float, default=0.05)
 
     # HVI enhancement parameters
     parser.add_argument('--res_scale', type=float, default=1.0, help='HVI residual scale')
@@ -107,12 +116,16 @@ def option():
     choices=['lol_v1',
              'lolv2_real',
              'lolv2_syn',
-             'lol_blur', 
+             'lol_blur',
              'SID',
              'SICE_mix',
              'SICE_grad',
              'fivek',
-             'mydatasets'],
+             'mydatasets',
+             'ts_plant',
+             'ts_book',
+             'ts_other'
+             ],
     help='Select the dataset to train on (default: %(default)s)')
 
     return parser

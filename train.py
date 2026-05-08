@@ -34,7 +34,12 @@ def train_init():
     cuda = opt.gpu_mode
     if cuda and not torch.cuda.is_available():
         raise Exception("No GPU found, please run without --cuda")
-    
+
+def color_mean_loss(output, target):
+    output_mean = output.mean(dim=[2, 3])
+    target_mean = target.mean(dim=[2, 3])
+    return torch.mean(torch.abs(output_mean - target_mean))
+
 def train(epoch):
     model.train()
     loss_print = 0
@@ -48,17 +53,29 @@ def train(epoch):
         im1, im2, path1, path2 = batch[0], batch[1], batch[2], batch[3]
         im1 = im1.cuda()
         im2 = im2.cuda()
-        
+
         # use random gamma function (enhancement curve) to improve generalization
         if opt.gamma:
-            gamma = random.randint(opt.start_gamma,opt.end_gamma) / 100.0
-            output_rgb = model(im1 ** gamma)  
+            gamma = random.randint(opt.start_gamma, opt.end_gamma) / 100.0
+            student_input = im1 ** gamma
         else:
-            output_rgb = model(im1)  
-            
+            student_input = im1
+
+        # student output
+        output_rgb = model(student_input)
+
+        # ground truth
         gt_rgb = im2
+
+        # teacher output, no gradient
+        with torch.no_grad():
+            teacher_rgb = teacher(student_input)
+            teacher_rgb = torch.clamp(teacher_rgb, 0, 1)
+
+        # HVI loss
         output_hvi = model.HVIT(output_rgb)
         gt_hvi = model.HVIT(gt_rgb)
+
         if opt.P_weight > 0:
             p_loss_hvi = opt.P_weight * P_loss(output_hvi, gt_hvi)[0]
             p_loss_rgb = opt.P_weight * P_loss(output_rgb, gt_rgb)[0]
@@ -77,15 +94,27 @@ def train(epoch):
         )
 
         loss_rgb = (
-            L1_loss(output_rgb, gt_rgb)
-            + D_loss(output_rgb, gt_rgb)
-            + E_loss(output_rgb, gt_rgb)
-            + p_loss_rgb
-            + CM_loss(output_rgb, gt_rgb)
-            + FRS_loss(output_rgb, gt_rgb)
+                L1_loss(output_rgb, gt_rgb)
+                + D_loss(output_rgb, gt_rgb)
+                + E_loss(output_rgb, gt_rgb)
+                + p_loss_rgb
+                + CM_loss(output_rgb, gt_rgb)
+                + FRS_loss(output_rgb, gt_rgb)
         )
 
-        loss = loss_rgb + opt.HVI_weight * loss_hvi
+        # teacher-student distillation loss
+        loss_teacher = L1_loss(output_rgb, teacher_rgb)
+
+        # color mean constraint, used to suppress color shift
+        loss_color_mean = color_mean_loss(output_rgb, gt_rgb)
+
+        # final loss
+        loss = (
+                loss_rgb
+                + opt.HVI_weight * loss_hvi
+                + opt.teacher_weight * loss_teacher
+                + opt.color_mean_weight * loss_color_mean
+        )
         iter += 1
 
         optimizer.zero_grad()
@@ -173,6 +202,38 @@ def load_datasets():
             train_set = torch.utils.data.ConcatDataset([train_set] * opt.repeat_factor)
 
         test_set = get_mydata_eval_set(opt.data_val_mydatasets)
+    elif opt.dataset == 'ts_plant':
+        train_set = get_mydata_training_set(
+            opt.data_train_ts_plant,
+            size=opt.cropSize,
+            aug_color=opt.aug_color,
+            aug_blur=opt.aug_blur,
+            aug_noise=opt.aug_noise,
+            noise_std=opt.noise_std
+        )
+        test_set = get_mydata_eval_set(opt.data_val_ts_plant)
+
+    elif opt.dataset == 'ts_book':
+        train_set = get_mydata_training_set(
+            opt.data_train_ts_book,
+            size=opt.cropSize,
+            aug_color=opt.aug_color,
+            aug_blur=opt.aug_blur,
+            aug_noise=opt.aug_noise,
+            noise_std=opt.noise_std
+        )
+        test_set = get_mydata_eval_set(opt.data_val_ts_book)
+
+    elif opt.dataset == 'ts_other':
+        train_set = get_mydata_training_set(
+            opt.data_train_ts_other,
+            size=opt.cropSize,
+            aug_color=opt.aug_color,
+            aug_blur=opt.aug_blur,
+            aug_noise=opt.aug_noise,
+            noise_std=opt.noise_std
+        )
+        test_set = get_mydata_eval_set(opt.data_val_ts_other)
     else:
         raise Exception("should choose a dataset")
     
@@ -203,6 +264,27 @@ def build_model():
         print("Freeze backbone: only rgb_refine will be trained.")
     return model
 
+def build_teacher():
+    print('===> Building teacher model')
+    teacher = CIDNet(
+        res_scale=opt.res_scale,
+        hv_res_scale=opt.hv_res_scale,
+        contrast_gamma=opt.contrast_gamma,
+        dark_boost=opt.dark_boost,
+        sat_gain=opt.sat_gain,
+        dark_threshold=opt.dark_threshold
+    ).cuda()
+
+    state_dict = torch.load(opt.teacher_path, map_location=lambda storage, loc: storage)
+    teacher.load_state_dict(state_dict, strict=False)
+    teacher.eval()
+
+    for p in teacher.parameters():
+        p.requires_grad = False
+
+    print(f'Teacher loaded from {opt.teacher_path}')
+    return teacher
+
 def make_scheduler():
     trainable_params = [p for p in model.parameters() if p.requires_grad]
     optimizer = optim.Adam(trainable_params, lr=opt.lr)
@@ -221,6 +303,8 @@ def make_scheduler():
     else:
         raise Exception("should choose a scheduler")
     return optimizer,scheduler
+
+
 
 def init_loss():
     L1_weight   = opt.L1_weight
@@ -254,8 +338,9 @@ if __name__ == '__main__':
     train_init()
     training_data_loader, testing_data_loader = load_datasets()
     model = build_model()
-    optimizer,scheduler = make_scheduler()
-    L1_loss,P_loss,E_loss,D_loss,C_loss,DC_loss,CM_loss,DHS_loss,FRS_loss = init_loss()
+    teacher = build_teacher()
+    optimizer, scheduler = make_scheduler()
+    L1_loss, P_loss, E_loss, D_loss, C_loss, DC_loss, CM_loss, DHS_loss, FRS_loss = init_loss()
 
     '''
     train
