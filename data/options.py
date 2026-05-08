@@ -95,6 +95,7 @@ def option():
     parser.add_argument('--aug_blur', type=_str2bool, default=False, help='enable random blur for training')
     parser.add_argument('--aug_noise', type=_str2bool, default=False, help='enable gaussian noise for training')
     parser.add_argument('--noise_std', type=float, default=0.01, help='gaussian noise std for training')
+    parser.add_argument('--freeze_backbone', type=_str2bool, default=False, help='only train RGB refine head')
 
     # auto grad, turn off to speed up training
     parser.add_argument('--grad_detect', type=_str2bool, default=False, help='if gradient explosion occurs, turn-on it')

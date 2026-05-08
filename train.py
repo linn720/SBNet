@@ -192,11 +192,20 @@ def build_model():
     ).cuda()
     if opt.start_epoch > 0:
         pth = f"./weights/train/epoch_{opt.start_epoch}.pth"
-        model.load_state_dict(torch.load(pth, map_location=lambda storage, loc: storage))
+        state_dict = torch.load(pth, map_location=lambda storage, loc: storage)
+        missing, unexpected = model.load_state_dict(state_dict, strict=False)
+        print("Missing keys:", missing)
+        print("Unexpected keys:", unexpected)
+    if opt.freeze_backbone:
+        for name, param in model.named_parameters():
+            if not name.startswith("rgb_refine"):
+                param.requires_grad = False
+        print("Freeze backbone: only rgb_refine will be trained.")
     return model
 
 def make_scheduler():
-    optimizer = optim.Adam(model.parameters(), lr=opt.lr)      
+    trainable_params = [p for p in model.parameters() if p.requires_grad]
+    optimizer = optim.Adam(trainable_params, lr=opt.lr)
     if opt.cos_restart_cyclic:
         if opt.start_warmup:
             scheduler_step = CosineAnnealingRestartCyclicLR(optimizer=optimizer, periods=[(opt.nEpochs//4)-opt.warmup_epochs, (opt.nEpochs*3)//4], restart_weights=[1,1],eta_mins=[0.0002,0.0000001])

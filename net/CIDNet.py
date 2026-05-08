@@ -5,6 +5,51 @@ from net.transformer_utils import *
 from net.LCA import *
 from huggingface_hub import PyTorchModelHubMixin
 
+class RGBRefineBlock(nn.Module):
+    def __init__(self, channels):
+        super(RGBRefineBlock, self).__init__()
+        self.body = nn.Sequential(
+            nn.Conv2d(channels, channels, 3, 1, 1, bias=True),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(channels, channels, 3, 1, 1, bias=True)
+        )
+
+    def forward(self, x):
+        return x + self.body(x)
+
+
+class RGBRefineHead(nn.Module):
+    """
+    RGB 空间细化头。
+    输入：增强结果 output_rgb + 原始低光图 x，共 6 通道。
+    作用：专门学习去噪、去灰雾、压制局部色块。
+    """
+    def __init__(self, in_channels=6, channels=48, num_blocks=5):
+        super(RGBRefineHead, self).__init__()
+
+        self.in_conv = nn.Sequential(
+            nn.Conv2d(in_channels, channels, 3, 1, 1, bias=True),
+            nn.ReLU(inplace=True)
+        )
+
+        self.blocks = nn.Sequential(
+            *[RGBRefineBlock(channels) for _ in range(num_blocks)]
+        )
+
+        self.out_conv = nn.Sequential(
+            nn.Conv2d(channels, channels, 3, 1, 1, bias=True),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(channels, 3, 3, 1, 1, bias=True),
+            nn.Tanh()
+        )
+
+    def forward(self, enhanced, low):
+        feat = torch.cat([enhanced, low], dim=1)
+        feat = self.in_conv(feat)
+        feat = self.blocks(feat)
+        residual = self.out_conv(feat)
+        return residual
+
 class CIDNet(nn.Module, PyTorchModelHubMixin):
     def __init__(self, 
                  channels=[36, 36, 72, 144],
@@ -80,6 +125,8 @@ class CIDNet(nn.Module, PyTorchModelHubMixin):
         )
         self.res_scale = float(res_scale)
         self.hv_res_scale = float(hv_res_scale)
+        self.rgb_refine = RGBRefineHead(in_channels=6, channels=48, num_blocks=5)
+        self.rgb_refine_scale = 0.25
 
     def forward(self, x):
         dtypes = x.dtype
@@ -137,6 +184,9 @@ class CIDNet(nn.Module, PyTorchModelHubMixin):
         delta_hvi = torch.cat([hv_delta, i_delta], dim=1)
         output_hvi = hvi + self.res_scale * delta_hvi
         output_rgb = self.trans.PHVIT(output_hvi)
+        rgb_residual = self.rgb_refine(output_rgb, x)
+        output_rgb = output_rgb + self.rgb_refine_scale * rgb_residual
+        output_rgb = torch.clamp(output_rgb, 0.0, 1.0)
 
         return output_rgb
     
