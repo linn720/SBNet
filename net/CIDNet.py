@@ -126,7 +126,7 @@ class CIDNet(nn.Module, PyTorchModelHubMixin):
         self.res_scale = float(res_scale)
         self.hv_res_scale = float(hv_res_scale)
         self.rgb_refine = RGBRefineHead(in_channels=6, channels=48, num_blocks=5)
-        self.rgb_refine_scale = 0.25
+        self.rgb_refine_scale = 0.5
 
     def forward(self, x):
         dtypes = x.dtype
